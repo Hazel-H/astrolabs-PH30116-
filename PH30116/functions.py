@@ -82,10 +82,11 @@ def fold_lightcurve(filename, period,*args, **kwargs):
  
     return data
 
+#stellar properties required for calculations
 stellar_info = pd.DataFrame({'radius':1.065, 'radius err':0.02, 'mass':0.961, 'mass err':0.025, 'temp':5657}, index=[0])
 
 def planet_radius(popt, pcov):
-    'Using the optimised values for base flux and transit flux from the lightcurve the formula below is used to calculate planet      radius: change in flux/flux = planet radius/stellar radius'
+    'Using the optimised values for base flux and transit flux from the lightcurve the formula below is used to calculate planet        radius: change in flux/flux = planet radius/stellar radius'
     'Inputs: popt and pcov from the curve fit function on the transit'
     'Returns: radius of the planet and associated error'
     
@@ -108,49 +109,66 @@ def planet_radius(popt, pcov):
     flux_transit_unc = uncertainty[1]
     
     planet_radius = np.sqrt((star_radius**2) * ((flux_base-flux_transit)/flux_base)) #in metres 
-    planet_radius_mj = planet_radius/jupiter_radius #in Jupiter masses
-    planet_radius_me = planet_radius/earth_radius  #in earth masses
+    planet_radius_e = planet_radius/earth_radius  #in earth masses
     
     #assume uncertainty in flux_transit >> flux_base  (units solar radii)
-    planet_radius_unc_mj = planet_radius_mj * (np.sqrt((flux_transit_unc / flux_transit)**2 + (star_radius_unc /             star_radius)**2))  #jupiter masses 
-    planet_radius_unc_me = planet_radius_me * (np.sqrt((flux_transit_unc / flux_transit)**2 + (star_radius_unc / star_radius)**2))  #earth masses
-
-    print("Radius of planet in Jupiter masses is %.4e +/- %.4e" % (planet_radius_mj,planet_radius_unc_mj))
-    print("Radius of planet in Earth masses is %.4e +/- %.4e" % (planet_radius_me,planet_radius_unc_me))
+    planet_radius_unc_e = planet_radius_e * (np.sqrt((flux_transit_unc / flux_transit)**2 + (star_radius_unc / star_radius)**2))  
+    
+    print("Radius of planet in Earth radii is %.4e +/- %.4e" % (planet_radius_e,planet_radius_unc_e))
         
     
 def semi_major_axis(period):
     "calculate semi major axis of planet (a) using Kepler's third law"
     'Inputs:  period of planet in DAYS'
-    'Returns: semi-major axis of planet in astronomical units'
+    'Returns: semi-major axis of planet in astronomical units and associated uncertainty'
     
     period_secs = period * 24 * 3600
     G = 6.67e-11
     solar_mass = 1.989e30
     #assume mass of star >> mass of planet 
     mass = 0.961 *solar_mass
+    mass_err = 0.02 
     AU = 1.496e11
     
-    a = ((period_secs**2) * G * mass * (1/4*np.pi))**(1/3)
-    return a/AU
+    a = ((period_secs**2) * G * mass * (1/(4*np.pi**2)))**(1/3)
+    
+    a_err = ((a * (1/3) * 0.02)/0.961)
+    
+    return[a/AU,a_err/AU]
 
-def planet_temperature(semi_major_axis):
-    'function first calculates the luminosity of the star, and then uses this to calculate the temperature of the planets            surface'
-    'Assumptions: there is no albedo afffect on the planet; there is no atmosphere altering temperature'
-    'Inputs: semi-major axis of planet in astronomical units'
-    'Returns:  temperature of planet in Kelvin'
-    
-    stellar_temp = stellar_info['temp'][0]
-    
-    #Stefan-Boltzmann constant 
-    s_const = 5.67e-8
-    #Solar radius 
-    solar_radius = 6.96e8
+
+def planet_temperature(semi_major_axis, error):
+    'calculates the temperature of the planets surface'
+    'Inputs: semi-major axis and associated uncertainty of planet in astronomical units'
+    'Returns:  temperature of planet and associated uncertainty in Kelvin'
+
     #1 AU 
     AU = 1.496e11
-    
-    stellar_luminosity = 4*np.pi * (stellar_info['radius'][0]*solar_radius)**2 * s_const * stellar_temp**4
-    
+    #solar luminosity 
+    solar_lum = 3.828e26
+    #Stefan-Boltzmann constant 
+    s_const = 5.67e-8
+
+    stellar_luminosity = 1.04733*solar_lum 
+    stellar_luminosity_err = 0.039336*solar_lum 
+
     planet_temp = (stellar_luminosity/(16 * np.pi * s_const * (semi_major_axis*AU)**2))**(1/4)
+    planet_temp_err = (planet_temp * 0.5 *  error)/semi_major_axis
     
-    return planet_temp
+    return[planet_temp, planet_temp_err]
+
+
+def flux_eff(semi_major, error): 
+    "Calculates the flux incident on the planet's surface in units of flux on Earth"
+    "Inputs: semi major axis and associated uncertainty of the planet in AU"
+    "Returns: effective flux on planet's surface in units of earth Flux with associated error"
+    
+    lum = 1.04733
+    lum_err = 0.039336
+    
+    flux = lum/(semi_major**2)
+    
+    error_d2 = 2 * semi_major * error 
+    
+    flux_err = np.sqrt((lum_err/lum)**2 + ((2*semi_major*error)/semi_major**2)**2)
+    return[flux, flux_err]
