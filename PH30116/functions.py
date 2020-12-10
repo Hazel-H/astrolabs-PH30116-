@@ -34,8 +34,12 @@ def import_and_flatten_lightcurve():
     #remove any nan values from the dataset
     alldata.dropna(inplace=True)
 
-    #removes any visible outliers 
-    alldata = alldata[alldata['flux']<1.001]
+    #removes outliers above 3 standard deviations from median (not below median as do not want to remove transits but filter removes 2 visble outliers) 
+    
+    std = np.std(alldata['flux'])
+    median = np.median(alldata['flux'])
+    upper_limit = median + (3 * std) 
+    alldata = alldata[alldata['flux']<upper_limit]
     alldata = alldata[alldata['flux']>0.998]
 
     #calculates the median filter
@@ -88,7 +92,7 @@ stellar_info = pd.DataFrame({'radius':1.065, 'radius err':0.02, 'mass':0.961, 'm
 def planet_radius(popt, pcov):
     'Using the optimised values for base flux and transit flux from the lightcurve the formula below is used to calculate planet        radius: change in flux/flux = planet radius/stellar radius'
     'Inputs: popt and pcov from the curve fit function on the transit'
-    'Returns: radius of the planet and associated error'
+    'Returns: radius of the planet and associated error in earth radii'
     
     #Solar radius in metres
     solar_radius = 6.96e8
@@ -113,8 +117,7 @@ def planet_radius(popt, pcov):
     
     #assume uncertainty in flux_transit >> flux_base  (units solar radii)
     planet_radius_unc_e = planet_radius_e * (np.sqrt((flux_transit_unc / flux_transit)**2 + (star_radius_unc / star_radius)**2))  
-    
-    print("Radius of planet in Earth radii is %.4e +/- %.4e" % (planet_radius_e,planet_radius_unc_e))
+    return[planet_radius_e, planet_radius_unc_e]
         
     
 def semi_major_axis(period):
